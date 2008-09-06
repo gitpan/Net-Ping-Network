@@ -1,0 +1,8 @@
+Revision history for Perl extension Net::Ping::Network.
+
+1.55 Fri Sep 05 09:21:08 2008
+	- Till 1.55 Net::Ping::Network was a simple collection of function,
+          to increase the performance of ICMP-availability checks by parallelization.
+          Now it has become an OOP-Modul with all the fancy stuff perl programmers love most.
+        - 1.00 stable class of functions to enhance ping-performance utilizing Net::Ping::External
+          to become more portable.  

@@ -20,7 +20,7 @@ $Config{useithreads} or die "Recompile Perl with threads to run this program.";
 
 use Net::Ping::External qw(ping);
 
-our $VERSION = '1.55';
+our $VERSION = '1.57';
 our @EXPORT = qw(new doping calchosts listAllHost results);
 our @ISA = qw (Exporter);
 our %REGISTRY;
@@ -110,7 +110,7 @@ sub calchosts { # Berechnet anhand der Maske die Anzahl der Möglichen Hosts in e
     #Die Netzbasisadresse wird ebenso entfernt.
    my ($self) = shift;
    my $lmask;  #get the mask
-
+   my $pO2=0;
    if ( ref ($self) ) {
      if ( ${ $self->{'HOSTLIST'} }[0]  ) {  # if there is a userdefined list of hosts, return the amount of hosts found
         return  scalar ( @{ $self->{'HOSTLIST'} } );
@@ -125,11 +125,18 @@ sub calchosts { # Berechnet anhand der Maske die Anzahl der Möglichen Hosts in e
    } else {
       print STDERR "A parameter is missing.";
    }
-
-    my $bits = 32 - $lmask; # Calculate the amount of bits in the host section of the mask
-    my $pO2 = (2 ** $bits) -2; # substract net and broadcast address
-    if ($pO2 < 1) {
-        $pO2=1;
+    
+    # Implementing RFC3021 /31 Net has 2 Hosts
+    if ($lmask == 31) {
+      $pO2=2;
+    } elsif ($lmask == 32) {
+      $pO2=1;
+    } else {
+        my $bits = 32 - $lmask; # Calculate the amount of bits in the host section of the mask
+        $pO2 = (2 ** $bits) -2; # substract net and broadcast address
+        if ($pO2 < 1) {
+          $pO2=1;
+        }
     }
     if (ref $self ){
       $self->{'HOSTS'} = $pO2;

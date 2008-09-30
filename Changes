@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::Ping::Network.
 
+1.60 Mon Sep 29 19:25:33 2008
+        - Fixing typos in documentation (sorry!)        
+        - Adding support for configuration of icmp packet-Size
+
 1.57 Mon Sep 29 11:15:35 2008
         - 1.57 implementing RFC3021 Complaince (Using 31-Bit Prefixes on IPv4 Point-to-Point Links)        
 

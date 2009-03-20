@@ -8,6 +8,21 @@
 use Test;
 BEGIN { plan tests => 1 };
 use Net::Ping::Network;
+
+my $net = Net::Ping::Network->new("127.0.0.0", 29);
+my ($results,$process_time) = $net->doping();
+
+my @keys = keys %$results;
+    
+foreach my $key ( @keys ) {
+    print "$key" . " is ";
+    if ( $$results{$key} ) {
+        print  "alive. PT: " . $$process_time{$key}  . "\n";
+    } else {
+        print "unreachable! PT: " . $$process_time{$key}  . "\n";
+    }
+}
+
 ok(1); # If we made it this far, we're ok.
 
 #########################

@@ -1,38 +1,37 @@
 #!/usr/bin/perl
-#Copyright 2007-2008, Bastian Angerstein.  All rights reserved.  This program is free
+#Copyright 2007-2009, Bastian Angerstein.  All rights reserved.  This program is free
 #software; you can redistribute it and/or modify it under the same terms as
 #PERL itself.
-
 package Net::Ping::Network;
 
 # infrastructure requirements
-require 5.008_008;	
-
 use strict;
+use warnings;
+use 5.008008;
+our $VERSION = '1.62';
 
 use threads;
 use threads::shared;
 use Thread::Queue;
-use Exporter;
+
+require Exporter;
+use base qw ( Exporter );
+
+our @EXPORT_OK = qw ( new &doping calchosts listAllHost results );
+our %EXPORT_TAGS = ( all => [ qw ( new doping calchosts listAllHost results ) ],
+                     min => [ qw (new doping results )]   );
 
 use Config;
-$Config{useithreads} or die "Recompile Perl with threads to run this program.";
+$Config{useithreads} or die "Recompile Perl with threads to run this program.\n";
 
 use Net::Ping::External qw(ping);
 
-our $VERSION = '1.61';
-our @EXPORT = qw(new doping calchosts listAllHost results);
-our @ISA = qw (Exporter);
 our %REGISTRY;
-our $verbose = 0;
+my $verbose = 0;
 
 my $DataQueue = Thread::Queue->new; # a shared Queue Object
 my %results : shared;     # a shared $hash
-
-sub AUTOLOAD {
-   our $AUTOLOAD;
-   (my $method = $AUTOLOAD) =~ s/.*:://s;
-}
+my %process_time : shared; # a shared $hash
 
 
 sub new {
@@ -89,18 +88,18 @@ sub new {
 
 ################################################################################
 
-sub verbose ($) { # Only a poor Debugging Sub
+sub verbose { # Only a poor Debugging Sub
   my @output = shift;
   print @output if ( $verbose );
+  return (1); 
 }
 
 ################################################################################
 
 sub setHosts{ # Hand a List of Hosts by Yourself.
   my ($self) = shift;
-  print @_;
   @{$self->{'HOSTLIST'}} = @_;
-
+  print @_;
   return ($self);
 }
 
@@ -160,11 +159,12 @@ sub listAllHost { # List all possible host of a net or all host received from us
       }
       $mask = $self->{'MASK'}; # configure the object 
       $net = $self->{'NET'}; # configure the object
-   } else { # no ref? then calculate all possiblie hosts by given mask and net
+    } else { # no ref? then calculate all possiblie hosts by given mask and net
       $net = $self; 
       $mask = shift;
-   }
-    die "Missing parameters listAllHost" unless ( defined $net && defined $mask);
+    }
+   
+    die "Missing parameters listAllHost\n" unless ( defined $net && defined $mask);
 
     my @allHosts; # an Array for the list of all hosts
     my @net_p = split(/\./, $net ); # Split the IP
@@ -210,6 +210,8 @@ sub listAllHost { # List all possible host of a net or all host received from us
 sub conf_ping {
     # Thread-Sub which does the pinging
     my ($self) = shift;
+    use Time::HiRes qw(gettimeofday tv_interval);
+
     verbose ( $self . " thread\n" );
     my $thr = threads->self; #Der thread selbst
     my $tid = $thr->tid; # Die ID des Threads
@@ -218,16 +220,23 @@ sub conf_ping {
 
     while ( my $host = $DataQueue->dequeue_nb ) { # nonblocking dequeuen of an address.
         verbose( "$tid is working.\n" ); #Debugging
+        my $t0 = [gettimeofday];
         if( ping ( host => "$host",  count => $self->{RETRIES}, timeout => $self->{TIMEOUT}, size => $self->{SIZE} )){ # Den Host pingen
+            my $t1 = [gettimeofday];
             verbose ("$host is alive.\n");
             $results{$host}  = 1;              # Good
+            $process_time{$host} = tv_interval $t0, $t1;
         } else {
+            my $t1 = [gettimeofday];
             verbose ( "$host is unreachable!\n" );
             $results{$host}  = 0;           #Bad
+            $process_time{$host} = tv_interval $t0, $t1;
         }
          $thr->yield;                          # Be gentle
     }
     verbose ("$tid is done.\n");
+
+    return(1);
 }
 
 ################################################################################
@@ -236,6 +245,7 @@ sub doping {
    # This Subroutine does the Pings.
     my ($self) = shift;
     %results = ();
+    %process_time = ();
     verbose ( @{ $self->{ 'HOSTLIST' } } );
 
     if ( @{ $self->{ 'HOSTLIST' } } ){ # If User provides a List of Hosts
@@ -247,7 +257,7 @@ sub doping {
     for (my $i=0; $i < $self->{'TC'}; $i++){
       $self->{ $i } = 0;
       $self->{ $i } = threads->new({'context' => 'list'}, $self->{CONF_PING}, $self); ##############
-      select(undef, undef, undef, 0.05);   # take a napp
+      select(undef, undef, undef, 0.02);   # take a napp
       if ($self->{ $i }->error) {
         print "Main: Error:" . $self->{ $i }->error . "\n";
       }
@@ -263,16 +273,23 @@ sub doping {
          foreach my $t (@joinable) {
             $t->join;
          }
-         select(undef, undef, undef, 0.05);     # be gentle
+         select(undef, undef, undef, 0.02);     # be gentle
     }
     verbose ( %results );
     $self->{RESULTS} = \%results;
+    $self->{MSEC} = \%process_time;
+    return (\%results, \%process_time);
 }
 
 ################################################################################
 sub results {
     my ($self) = shift;
     return $self->{RESULTS};
+}
+
+sub process_time {
+    my ($self) = shift;
+    return $self->{MSEC};
 }
 1;
 
@@ -289,21 +306,23 @@ Simply give a network address and a mask to the constructor new().
 
 
 Optionally the timeout in seconds (3), the amount of retries (3),
-the number of threads utilized (10) and the size in byte (56) can be specified.
+the number of threads utilized (10) and the size in byte (56) of icmp-load can be specified.
 
     my $net = Net::Ping::Network->new("127.0.0.0", 29, $timeout, $retries, $threads, $size);
 
 
 To ping the hosts in the network use the doping() methode of your Net::Ping::Network methode.
 When Net::Ping::Network is done, you can get the results as hashref using the methode results().
-
-
+ 
     $net->doping();
-    $results = $net->results();
+    my $results = $net->results();
+ 
+    #Since Version 1.62 you can simply    
+    my ($results,$process_time = $net->doping();
 
-
-The hashkeys are the ips the value is 1 for reachable, 0 for unreachable.
-
+The hashkey of $results hash_ref is the ip, the value is 1 for reachable, 0 for unreachable.
+The hashkey of $process_time is the ip, the value is a value in microseconds needed to process the ping.
+(It is the roundtrip-time of the ping. If no response is received its a value near the given timeout.)
 
 The hash is not sorted in anyway, to sort a hash is useless.
 If you need sorted results try this:
@@ -321,7 +340,7 @@ If you need sorted results try this:
 
     foreach my $key ( @keys ) {
         print "$key" . " is ";
-        if ( $$h{"$key"} ) {
+        if ( $$results{"$key"} ) {
           print  "alive.\n";
         } else {
           print "unreachable!\n";
@@ -372,7 +391,7 @@ C<< $n = Net::Ping::Network->new("127.0.0.0", 29, [$timeout, $retries, $threads,
 
 =item C<listAllHost()>
 
-depending on the context it returns a list containig all possible Hosts the network or a whitespace seperated string.
+depending on the context it returns a list containig all possible Hosts in the network or a space seperated string.
 
 
 =item C<doping()>
@@ -389,12 +408,15 @@ Network-Address and Broadcast is removed, but a /32 has 1 Address.
 
 Returns a Hashref of the Results. Keys are IPs, the Values are returncodes (0 for bad or 1 for ok).
 
+=item C<process_time()>
+
+Returns a Hashref of the per Host Process Time (PIND ROUNDTRIPTIME). Keys are the Host-IPs. 
 
 =back
 
 =head1 COPYRIGHT
 
-Copyright 2007-2008, Bastian Angerstein.  All rights reserved.  This program is free
+Copyright 2007-2009, Bastian Angerstein.  All rights reserved.  This program is free
 software; you can redistribute it and/or modify it under the same terms as
 PERL itself.
 

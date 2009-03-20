@@ -1,4 +1,4 @@
-Net-Ping-Network version 1.56
+Net-Ping-Network version 1.62
 =====================
 
 The README is used to introduce the module and provide instructions on
@@ -30,12 +30,13 @@ This module requires these other modules and libraries:
   threads
   threads::shared;
   Thread::Queue;
+  Time::HiRes
 
 COPYRIGHT AND LICENCE
 
 Put the correct copyright and licence information here.
 
-Copyright (C) 2008 by Bastian Angerstein
+Copyright (C) 2009 by Bastian Angerstein
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.8 or,
